@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d9488" id="meta-theme-color" />
+  <meta name="theme-color" content="#ffffff" id="meta-theme-color" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -680,7 +680,7 @@
           display: 'standalone',
           orientation: 'portrait',
           background_color: '#09090b',
-          theme_color: '#0d9488',
+          theme_color: '#ffffff',
           icons: [
             { src: iconUrl, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
             { src: iconUrl, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
@@ -780,6 +780,32 @@
     }
 
     // --- 6. GESTIONE TEMA (ORA DEL GIORNO + SISTEMA + COLORI DINAMICI + SKIN) ---
+    function toSolidHexColor(colorStr, fallbackHex) {
+      if (!colorStr || typeof colorStr !== 'string') return fallbackHex;
+      const trimmed = colorStr.trim();
+      if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) return trimmed;
+      const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+      if (rgbMatch) {
+        const toHex = (n) => Math.max(0, Math.min(255, parseInt(n, 10))).toString(16).padStart(2, '0');
+        return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
+      }
+      return fallbackHex;
+    }
+
+    function syncSystemBarsColor(topBarColor, bottomSurfaceColor) {
+      let metaTheme = document.getElementById('meta-theme-color');
+      if (!metaTheme) {
+        metaTheme = document.createElement('meta');
+        metaTheme.name = 'theme-color';
+        metaTheme.id = 'meta-theme-color';
+        document.head.appendChild(metaTheme);
+      }
+      metaTheme.setAttribute('content', topBarColor);
+
+      // Sincronizza il colore di fondo di <html> per la barra gesti inferiore su Android PWA
+      document.documentElement.style.backgroundColor = bottomSurfaceColor;
+    }
+
     function applyTheme() {
       const hour = new Date().getHours();
       const isNightTime = hour >= 19 || hour < 7; // Scuro dalle 19:00 alle 07:00
@@ -834,7 +860,6 @@
       const styleTag = document.getElementById('dynamic-skin-style');
       const activeLabel = document.getElementById('active-skin-label');
       const root = document.documentElement.style;
-      const metaTheme = document.getElementById('meta-theme-color');
 
       const skin = state.activeSkinId !== 'default'
         ? state.savedSkins.find(s => s.id === state.activeSkinId)
@@ -852,7 +877,12 @@
         root.setProperty('--skin-sticker-radius', '0.5rem');
         if (styleTag) styleTag.textContent = '';
         if (activeLabel) activeLabel.textContent = 'Attiva: Standard VinylVault';
-        if (metaTheme) metaTheme.setAttribute('content', isDark ? '#09090b' : fallbackTheme.accent);
+
+        // Adatta barra di stato superiore e area navigazione inferiore al tema chiaro/scuro
+        syncSystemBarsColor(
+          isDark ? '#18181b' : '#ffffff',
+          isDark ? '#18181b' : '#ffffff'
+        );
         return;
       }
 
@@ -880,14 +910,16 @@
       root.setProperty('--skin-sticker-border', sticker.border || (isDark ? '#fef08a' : '#ca8a04'));
       root.setProperty('--skin-sticker-radius', sticker.radius || '0.5rem');
 
-      if (metaTheme) {
-        metaTheme.setAttribute('content', palette.headerBg || (isDark ? '#09090b' : accent));
-      }
+      // Converte eventuali rgba(...) della skin in esadecimale solido per le barre di sistema Android
+      const defaultHex = isDark ? '#18181b' : '#ffffff';
+      const solidTopBar = toSolidHexColor(palette.headerBg || palette.bodyBg, defaultHex);
+      const solidBottomBar = toSolidHexColor(palette.navBg || palette.bodyBg, defaultHex);
+      syncSystemBarsColor(solidTopBar, solidBottomBar);
 
       // Costruisce CSS sicuro per override di sfondo, pattern, card, header, nav e bordi
       let cssRules = '';
       if (palette.bodyBg) {
-        cssRules += `body { background-color: ${palette.bodyBg} !important; }\n`;
+        cssRules += `html, body { background-color: ${palette.bodyBg} !important; }\n`;
       }
       if (palette.bodyPattern) {
         cssRules += `body { background-image: ${palette.bodyPattern} !important; ${palette.bodyPatternSize ? `background-size: ${palette.bodyPatternSize} !important;` : ''} }\n`;
