@@ -69,6 +69,15 @@
       box-sizing: border-box;
     }
 
+    html {
+      color-scheme: light dark;
+      background-color: #ffffff;
+    }
+
+    html.dark {
+      background-color: #18181b;
+    }
+
     html, body {
       height: 100%;
       overscroll-behavior-y: none;
@@ -127,7 +136,7 @@
       transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
     }
     .modal-panel.is-dragging {
-      transition: none !important;
+      transform: translateY(0);
     }
     .sheet-drag-zone {
       touch-action: none;
@@ -136,7 +145,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-100 transition-colors duration-300 flex flex-col overflow-hidden">
+<body class="text-slate-900 dark:text-zinc-100 transition-colors duration-300 flex flex-col overflow-hidden">
 
   <!-- HEADER FISSO SUPERIORE -->
   <header class="shrink-0 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md border-b border-slate-200/80 dark:border-zinc-800/80 z-30 pt-[var(--safe-top)]">
@@ -679,7 +688,7 @@
           start_url: startUrl,
           display: 'standalone',
           orientation: 'portrait',
-          background_color: '#09090b',
+          background_color: '#ffffff',
           theme_color: '#ffffff',
           icons: [
             { src: iconUrl, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
@@ -691,6 +700,7 @@
         const manifestDataUri = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
         const manifestLink = document.createElement('link');
         manifestLink.rel = 'manifest';
+        manifestLink.id = 'pwa-manifest-link';
         manifestLink.href = manifestDataUri;
         document.head.appendChild(manifestLink);
 
@@ -778,21 +788,7 @@
         showToast('⚠️ Memoria piena per il salvataggio della skin');
       }
     }
-
-    // --- 6. GESTIONE TEMA (ORA DEL GIORNO + SISTEMA + COLORI DINAMICI + SKIN) ---
-    function toSolidHexColor(colorStr, fallbackHex) {
-      if (!colorStr || typeof colorStr !== 'string') return fallbackHex;
-      const trimmed = colorStr.trim();
-      if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) return trimmed;
-      const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-      if (rgbMatch) {
-        const toHex = (n) => Math.max(0, Math.min(255, parseInt(n, 10))).toString(16).padStart(2, '0');
-        return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
-      }
-      return fallbackHex;
-    }
-
-    function syncSystemBarsColor(topBarColor, bottomSurfaceColor) {
+    function syncSystemBarsColor(topBarColor, bottomSurfaceColor, isDark = false) {
       let metaTheme = document.getElementById('meta-theme-color');
       if (!metaTheme) {
         metaTheme = document.createElement('meta');
@@ -802,8 +798,22 @@
       }
       metaTheme.setAttribute('content', topBarColor);
 
-      // Sincronizza il colore di fondo di <html> per la barra gesti inferiore su Android PWA
+      // Aggiorna schema colore nativo e sfondo root per barra di navigazione Android
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
       document.documentElement.style.backgroundColor = bottomSurfaceColor;
+      document.body.style.backgroundColor = bottomSurfaceColor;
+
+      // Aggiorna dinamicamente anche background_color e theme_color nel Manifest PWA
+      const manifestLink = document.getElementById('pwa-manifest-link');
+      if (manifestLink && manifestLink.href.startsWith('data:application/manifest+json')) {
+        try {
+          const rawJson = decodeURIComponent(manifestLink.href.split(',')[1]);
+          const manifestObj = JSON.parse(rawJson);
+          manifestObj.theme_color = topBarColor;
+          manifestObj.background_color = bottomSurfaceColor;
+          manifestLink.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifestObj));
+        } catch (e) {}
+      }
     }
 
     function applyTheme() {
@@ -881,7 +891,8 @@
         // Adatta barra di stato superiore e area navigazione inferiore al tema chiaro/scuro
         syncSystemBarsColor(
           isDark ? '#18181b' : '#ffffff',
-          isDark ? '#18181b' : '#ffffff'
+          isDark ? '#18181b' : '#ffffff',
+          isDark
         );
         return;
       }
@@ -914,7 +925,7 @@
       const defaultHex = isDark ? '#18181b' : '#ffffff';
       const solidTopBar = toSolidHexColor(palette.headerBg || palette.bodyBg, defaultHex);
       const solidBottomBar = toSolidHexColor(palette.navBg || palette.bodyBg, defaultHex);
-      syncSystemBarsColor(solidTopBar, solidBottomBar);
+      syncSystemBarsColor(solidTopBar, solidBottomBar, isDark);
 
       // Costruisce CSS sicuro per override di sfondo, pattern, card, header, nav e bordi
       let cssRules = '';
