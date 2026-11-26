@@ -660,49 +660,98 @@
     };
 
     // --- 4. INIZIALIZZAZIONE PWA (MANIFEST & SERVICE WORKER DINAMICI) ---
+    function generatePngIconDataUrl(size = 512) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const c = size / 2;
+
+      // Sfondo arrotondato maskable-safe
+      ctx.fillStyle = '#0d9488';
+      ctx.fillRect(0, 0, size, size);
+
+      // Disco in vinile nero
+      ctx.beginPath();
+      ctx.arc(c, c, size * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle = '#18181b';
+      ctx.fill();
+
+      // Solchi del vinile
+      ctx.strokeStyle = '#3f3f46';
+      ctx.lineWidth = Math.max(2, size * 0.008);
+      [0.30, 0.23, 0.16].forEach(r => {
+        ctx.beginPath();
+        ctx.arc(c, c, size * r, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // Etichetta centrale gialla
+      ctx.beginPath();
+      ctx.arc(c, c, size * 0.13, 0, Math.PI * 2);
+      ctx.fillStyle = '#fde047';
+      ctx.fill();
+
+      // Foro centrale
+      ctx.beginPath();
+      ctx.arc(c, c, size * 0.036, 0, Math.PI * 2);
+      ctx.fillStyle = '#18181b';
+      ctx.fill();
+
+      return canvas.toDataURL('image/png');
+    }
+
+    let currentManifestBlobUrl = null;
+
+    function updateManifestBlob(manifestObj) {
+      const manifestLink = document.getElementById('pwa-manifest-link');
+      if (!manifestLink) return;
+      try {
+        const blob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
+        const newUrl = URL.createObjectURL(blob);
+        manifestLink.href = newUrl;
+        if (currentManifestBlobUrl) {
+          URL.revokeObjectURL(currentManifestBlobUrl);
+        }
+        currentManifestBlobUrl = newUrl;
+      } catch (e) {}
+    }
+
     function initPWA() {
       try {
-        // Icona SVG ad alta risoluzione codificata per il Manifest
-        const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-          <rect width="512" height="512" rx="112" fill="#0d9488"/>
-          <circle cx="256" cy="256" r="192" fill="#18181b"/>
-          <circle cx="256" cy="256" r="150" fill="none" stroke="#3f3f46" stroke-width="4"/>
-          <circle cx="256" cy="256" r="112" fill="none" stroke="#3f3f46" stroke-width="4"/>
-          <circle cx="256" cy="256" r="76" fill="none" stroke="#3f3f46" stroke-width="3"/>
-          <circle cx="256" cy="256" r="64" fill="#fde047"/>
-          <circle cx="256" cy="256" r="18" fill="#18181b"/>
-        </svg>`;
-        const iconUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgIcon);
+        // Genera icone PNG reali 192x192 e 512x512 tramite Canvas per WebAPK nativo su Android
+        const icon192 = generatePngIconDataUrl(192);
+        const icon512 = generatePngIconDataUrl(512);
 
-        // Aggiunge anche Apple Touch Icon dinamico per iOS/Android
+        // Aggiunge Apple Touch Icon PNG ad alta risoluzione
         const appleIcon = document.createElement('link');
         appleIcon.rel = 'apple-touch-icon';
-        appleIcon.href = iconUrl;
+        appleIcon.href = icon512;
         document.head.appendChild(appleIcon);
 
         const startUrl = window.location.href.startsWith('http') ? window.location.href : './';
-        const manifest = {
+        window.__vvManifestObj = {
           name: 'I Miei Dischi — Archivio Vinili',
           short_name: 'I Miei Dischi',
           description: 'Catalogo personale dei tuoi dischi in vinile e lista dei desideri.',
           start_url: startUrl,
+          scope: './',
           display: 'standalone',
           orientation: 'portrait',
           background_color: '#ffffff',
           theme_color: '#ffffff',
           icons: [
-            { src: iconUrl, sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
-            { src: iconUrl, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+            { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+            { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
           ]
         };
 
-        // Usa Data URI per massima compatibilità con i requisiti PWA di Chrome
-        const manifestDataUri = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
         const manifestLink = document.createElement('link');
         manifestLink.rel = 'manifest';
         manifestLink.id = 'pwa-manifest-link';
-        manifestLink.href = manifestDataUri;
         document.head.appendChild(manifestLink);
+        updateManifestBlob(window.__vvManifestObj);
 
         // Registra Service Worker minimale per supporto installabilità PWA
         if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
@@ -804,15 +853,10 @@
       document.body.style.backgroundColor = bottomSurfaceColor;
 
       // Aggiorna dinamicamente anche background_color e theme_color nel Manifest PWA
-      const manifestLink = document.getElementById('pwa-manifest-link');
-      if (manifestLink && manifestLink.href.startsWith('data:application/manifest+json')) {
-        try {
-          const rawJson = decodeURIComponent(manifestLink.href.split(',')[1]);
-          const manifestObj = JSON.parse(rawJson);
-          manifestObj.theme_color = topBarColor;
-          manifestObj.background_color = bottomSurfaceColor;
-          manifestLink.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifestObj));
-        } catch (e) {}
+      if (window.__vvManifestObj) {
+        window.__vvManifestObj.theme_color = topBarColor;
+        window.__vvManifestObj.background_color = bottomSurfaceColor;
+        updateManifestBlob(window.__vvManifestObj);
       }
     }
 
